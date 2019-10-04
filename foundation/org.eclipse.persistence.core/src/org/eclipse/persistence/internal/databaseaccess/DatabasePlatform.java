@@ -520,6 +520,22 @@ public class DatabasePlatform extends DatasourcePlatform {
                 appendTime((java.sql.Time)dbValue, writer);
             } else if (dbValue instanceof java.sql.Timestamp) {
                 appendTimestamp((java.sql.Timestamp)dbValue, writer);
+            } else if (dbValue instanceof java.time.LocalDate){
+                appendDate(java.sql.Date.valueOf((java.time.LocalDate) dbValue), writer);
+            } else if (dbValue instanceof java.time.LocalDateTime){
+                appendTimestamp(java.sql.Timestamp.valueOf((java.time.LocalDateTime) dbValue), writer);
+            } else if (dbValue instanceof java.time.OffsetDateTime) {
+                appendTimestamp(java.sql.Timestamp.from(((java.time.OffsetDateTime) dbValue).toInstant()), writer);
+            } else if (dbValue instanceof java.time.LocalTime){
+                java.time.LocalTime lt = (java.time.LocalTime) dbValue;
+                java.sql.Timestamp ts = java.sql.Timestamp.valueOf(java.time.LocalDateTime.of(java.time.LocalDate.ofEpochDay(0), lt));
+                appendTimestamp(ts, writer);
+            } else if (dbValue instanceof java.time.OffsetTime) {
+                java.time.OffsetTime ot = (java.time.OffsetTime) dbValue;
+                java.sql.Timestamp ts = java.sql.Timestamp.valueOf(java.time.LocalDateTime.of(java.time.LocalDate.ofEpochDay(0), ot.toLocalTime()));
+                appendTimestamp(ts, writer);
+            } else if (dbValue instanceof java.time.LocalDate){
+                appendDate(java.sql.Date.valueOf((java.time.LocalDate) dbValue), writer);
             } else if (dbValue instanceof java.sql.Date) {
                 appendDate((java.sql.Date)dbValue, writer);
             } else if (dbValue == null) {
@@ -1133,6 +1149,16 @@ public class DatabasePlatform extends DatasourcePlatform {
     }
 
     /**
+     * Some platforms have an option list
+     * Only to be used for stored procedure creation.
+     * 
+     * @see org.eclipse.persistence.tools.schemaframework.StoredProcedureDefinition
+     */
+    public String getProcedureOptionList() {
+        return "";
+    }
+
+    /**
      * Return the class type to database type mapping for the schema framework.
      */
     public Map<String, Class> getClassTypes() {
@@ -1304,14 +1330,21 @@ public class DatabasePlatform extends DatasourcePlatform {
             return Types.TIMESTAMP;
         } else if (javaType == ClassConstants.UTILDATE ) {
             return Types.TIMESTAMP;
-        } else if (javaType == ClassConstants.TIME) {
+        } else if (javaType == ClassConstants.TIME ||
+            javaType == ClassConstants.TIME_LTIME) { //bug 546312
             return Types.TIME;
-        } else if (javaType == ClassConstants.SQLDATE) {
+        } else if (javaType == ClassConstants.SQLDATE ||
+            javaType == ClassConstants.TIME_LDATE) { //bug 546312
             return Types.DATE;
         } else if (javaType == ClassConstants.TIMESTAMP ||
-            javaType == ClassConstants.UTILDATE) { //bug 5237080, return TIMESTAMP for java.util.Date as well
+            javaType == ClassConstants.UTILDATE || //bug 5237080, return TIMESTAMP for java.util.Date as well
+            javaType == ClassConstants.TIME_LDATETIME) { //bug 546312
             return Types.TIMESTAMP;
-        } else if (javaType == ClassConstants.ABYTE) {
+        } else if(javaType == ClassConstants.TIME_OTIME) { //bug 546312
+            return Types.TIME_WITH_TIMEZONE;
+        } else if(javaType == ClassConstants.TIME_ODATETIME) { //bug 546312
+            return Types.TIMESTAMP_WITH_TIMEZONE;
+        }else if (javaType == ClassConstants.ABYTE) {
             return Types.LONGVARBINARY;
         } else if (javaType == ClassConstants.APBYTE) {
             return Types.LONGVARBINARY;
@@ -2429,7 +2462,8 @@ public class DatabasePlatform extends DatasourcePlatform {
         if (!dbCall.getReturnsResultSet()) {// no result set is expected
             if (dbCall.isCursorOutputProcedure()) {
                 result = accessor.executeNoSelect(dbCall, statement, session);
-                resultSet = (ResultSet)((CallableStatement)statement).getObject(dbCall.getCursorOutIndex());
+                int index = dbCall.getCursorOutIndex();
+                resultSet = (ResultSet)dbCall.getObject((CallableStatement)statement, index - 1);
             } else {
                 accessor.executeDirectNoSelect(statement, dbCall, session);
 
@@ -2544,13 +2578,11 @@ public class DatabasePlatform extends DatasourcePlatform {
             statement.setTime(index,(java.sql.Time)parameter);
         } else if (parameter instanceof java.time.LocalTime){
             java.time.LocalTime lt = (java.time.LocalTime) parameter;
-            java.sql.Timestamp ts = new java.sql.Timestamp(
-                    70, 0, 1, lt.getHour(), lt.getMinute(), lt.getSecond(), lt.getNano());
+            java.sql.Timestamp ts = java.sql.Timestamp.valueOf(java.time.LocalDateTime.of(java.time.LocalDate.ofEpochDay(0), lt));
             statement.setTimestamp(index, ts);
         } else if (parameter instanceof java.time.OffsetTime) {
             java.time.OffsetTime ot = (java.time.OffsetTime) parameter;
-            java.sql.Timestamp ts = new java.sql.Timestamp(
-                    70, 0, 1, ot.getHour(), ot.getMinute(), ot.getSecond(), ot.getNano());
+            java.sql.Timestamp ts = java.sql.Timestamp.valueOf(java.time.LocalDateTime.of(java.time.LocalDate.ofEpochDay(0), ot.toLocalTime()));
             statement.setTimestamp(index, ts);
         } else if (parameter instanceof Boolean) {
             statement.setBoolean(index, ((Boolean) parameter).booleanValue());
@@ -2651,13 +2683,11 @@ public class DatabasePlatform extends DatasourcePlatform {
             statement.setTime(name,(java.sql.Time)parameter);
         } else if (parameter instanceof java.time.LocalTime){
             java.time.LocalTime lt = (java.time.LocalTime) parameter;
-            java.sql.Timestamp ts = new java.sql.Timestamp(
-                    70, 0, 1, lt.getHour(), lt.getMinute(), lt.getSecond(), lt.getNano());
+            java.sql.Timestamp ts = java.sql.Timestamp.valueOf(java.time.LocalDateTime.of(java.time.LocalDate.ofEpochDay(0), lt));
             statement.setTimestamp(name, ts);
         } else if (parameter instanceof java.time.OffsetTime) {
             java.time.OffsetTime ot = (java.time.OffsetTime) parameter;
-            java.sql.Timestamp ts = new java.sql.Timestamp(
-                    70, 0, 1, ot.getHour(), ot.getMinute(), ot.getSecond(), ot.getNano());
+            java.sql.Timestamp ts = java.sql.Timestamp.valueOf(java.time.LocalDateTime.of(java.time.LocalDate.ofEpochDay(0), ot.toLocalTime()));
             statement.setTimestamp(name, ts);
         } else if (parameter instanceof Boolean) {
             statement.setBoolean(name, ((Boolean) parameter).booleanValue());
